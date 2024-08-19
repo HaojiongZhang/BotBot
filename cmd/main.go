@@ -5,19 +5,27 @@ import (
 	"log"
 	"os"
 	"strings"
+	"flag"
 
-	"github.com/HaojiongZhang/BotBot/util"
+	"github.com/HaojiongZhang/BotBot/internal"
 	"github.com/joho/godotenv"
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 	"github.com/slack-go/slack/socketmode"
-	"github.com/zeromicro/go-zero/core/logx"
 )
 
 var conversationHistory = make(map[string][]string)
+var thinkingEmoji = "one-sec-cooking"
 var botID string
 func main() {
 	// Load environment variables
+	var verboseFlag bool
+	flag.BoolVar(&verboseFlag, "v", false, "Enable verbose logging")
+	flag.Parse()
+
+	// Set verbose flag in the utility package
+	util.SetVerbose(verboseFlag)
+
 	err := godotenv.Load()
 	if err != nil {
 		log.Fatalf("Error loading .env file")
@@ -26,6 +34,8 @@ func main() {
 	// Initialize Slack client and Socket Mode
 	slackAppToken := os.Getenv("SLACK_APP_TOKEN")
 	slackBotToken := os.Getenv("SLACK_BOT_TOKEN")
+	util.InitNotionClient()
+
 	client := slack.New(slackBotToken, slack.OptionDebug(true), slack.OptionAppLevelToken(slackAppToken))
 	socketClient := socketmode.New(client, socketmode.OptionDebug(false))
 
@@ -65,11 +75,15 @@ func main() {
 func handleAppMentionEvent(client *slack.Client, event *slackevents.AppMentionEvent) {
 	userID := event.User
 	channelID := event.Channel
+	messageTimestamp := event.TimeStamp
 	
 	text := strings.TrimSpace(strings.Replace(event.Text, fmt.Sprintf("<@%s>", botID), "", -1))
-	logx.Debug("\n_______________\n")
-	logx.Debug(text)
-	logx.Debug("\n_______________\n")
+	
+
+	err := client.AddReaction(thinkingEmoji, slack.ItemRef{
+		Channel:   channelID,
+		Timestamp: messageTimestamp,
+	})
 
 	// Check if the user sent "ping"
 	if strings.ToLower(text) == "ping" {
@@ -81,10 +95,8 @@ func handleAppMentionEvent(client *slack.Client, event *slackevents.AppMentionEv
 		return
 	}
 
-	// Retrieve or initialize conversation history for the user
 	history := conversationHistory[userID]
 
-	// Call Ollama using the util package with the current history
 	response, err := util.CallOllama(text, history)
 	if err != nil {
 		response = "Sorry, I couldn't process that."
@@ -95,5 +107,13 @@ func handleAppMentionEvent(client *slack.Client, event *slackevents.AppMentionEv
 	_, _, err = client.PostMessage(channelID, slack.MsgOptionText(response, false))
 	if err != nil {
 		log.Printf("Failed to post message: %v", err)
+	}
+
+	err = client.RemoveReaction(thinkingEmoji, slack.ItemRef{
+		Channel:   channelID,
+		Timestamp: messageTimestamp,
+	})
+	if err != nil {
+		log.Printf("Failed to remove reaction: %v", err)
 	}
 }
