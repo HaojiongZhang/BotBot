@@ -150,12 +150,12 @@ func AddEntryToDatabase(dbID, name, dateCreated, labelTags, urlLink, summary str
 		},
 		"Date Created": notionapi.DateProperty{
 			Date: &notionapi.DateObject{
-				Start: &dateObject, // Pass the Date object here
+				Start: &dateObject, 
 			},
 		},
 		"Label Tags": notionapi.MultiSelectProperty{
 			MultiSelect: []notionapi.Option{
-				{Name: labelTags}, // Assuming labelTags is a single string; adjust if it's a list
+				{Name: labelTags}, 
 			},
 		},
 		"URL Link": notionapi.URLProperty{
