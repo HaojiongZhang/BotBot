@@ -12,6 +12,7 @@ import (
 )
 
 var notionClient *notionapi.Client
+var dbID string
 
 func InitNotionClient() {
 	apiKey := os.Getenv("NOTION_API_KEY")
@@ -26,7 +27,8 @@ func InitNotionClient() {
 
 	// Check if the database with the specified title exists under the parent page
 	dbTitle := "Your Database Title" 
-	dbID, err := queryDatabase(dbTitle, parentPageID)
+	var err error
+	dbID, err = queryDatabase(dbTitle, parentPageID)
 	if err != nil {
 		log.Fatalf("Error checking database: %v", err)
 	}
@@ -129,14 +131,22 @@ func createDatabase(dbTitle, parentID string) (string, error) {
 	return string(newDatabase.ID), nil
 }
 
-func AddEntryToDatabase(dbID, name, dateCreated, labelTags, urlLink, summary string) error {
+func AddEntryToDatabase( name, dateCreated, labelTags, urlLink, summary string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Parse the dateCreated string into a Date object
 	var dateObject notionapi.Date
 	if err := dateObject.UnmarshalText([]byte(dateCreated)); err != nil {
 		return fmt.Errorf("failed to parse date: %w", err)
+	}
+
+	labels := strings.Split(labelTags, ",")
+	multiSelectOptions := make([]notionapi.Option, 0, len(labels))
+	for _, label := range labels {
+		trimmedLabel := strings.TrimSpace(label)
+		if trimmedLabel != "" {
+			multiSelectOptions = append(multiSelectOptions, notionapi.Option{Name: trimmedLabel})
+		}
 	}
 
 	// Prepare the properties for the new entry
@@ -154,9 +164,7 @@ func AddEntryToDatabase(dbID, name, dateCreated, labelTags, urlLink, summary str
 			},
 		},
 		"Label Tags": notionapi.MultiSelectProperty{
-			MultiSelect: []notionapi.Option{
-				{Name: labelTags}, 
-			},
+			MultiSelect: multiSelectOptions,
 		},
 		"URL Link": notionapi.URLProperty{
 			URL: urlLink,

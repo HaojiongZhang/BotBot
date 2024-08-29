@@ -30,8 +30,8 @@ func InitializeSlackClient() error {
 	slackAppToken := os.Getenv("SLACK_APP_TOKEN")
 	slackBotToken := os.Getenv("SLACK_BOT_TOKEN")
 
-	client = slack.New(slackBotToken, slack.OptionDebug(true), slack.OptionAppLevelToken(slackAppToken))
-	socketClient = socketmode.New(client, socketmode.OptionDebug(false))
+	client = slack.New(slackBotToken, slack.OptionDebug(verbose), slack.OptionAppLevelToken(slackAppToken))
+	socketClient = socketmode.New(client, socketmode.OptionDebug(verbose))
 
 	authTest, err := client.AuthTest()
 	if err != nil {
@@ -88,8 +88,19 @@ func HandleAppMentionEvent(client *slack.Client, event *slackevents.AppMentionEv
 		log.Printf("Failed to add reaction: %v", err)
 	}
 
+	defer func() {
+		err = client.RemoveReaction(thinkingEmoji, slack.ItemRef{
+			Channel:   channelID,
+			Timestamp: messageTimestamp,
+		})
+		if err != nil {
+			log.Printf("Failed to remove reaction: %v", err)
+		}
+	}()
+
+    text = strings.ToLower(text) 
 	// Check if the user sent "ping"
-	if strings.ToLower(text) == "ping" {
+	if text == "ping" {
 		response := fmt.Sprintf("Hello <@%s>! Pong!", userID)
 		_, _, err := client.PostMessage(channelID, slack.MsgOptionText(response, false))
 		if err != nil {
@@ -98,13 +109,31 @@ func HandleAppMentionEvent(client *slack.Client, event *slackevents.AppMentionEv
 		return
 	}
 
-	history := conversationHistory[userID]
+	if strings.ToLower(text) == "-h" || strings.ToLower(text) == "-help" {
+		helpMessage := "To add a link to notion follow the format: `@BotBot YOUR-URL-LINK-HERE LABEL1 LABEL2 ...`"
+		_, _, err := client.PostMessage(channelID, slack.MsgOptionText(helpMessage, false))
+		if err != nil {
+			log.Printf("Failed to post message: %v", err)
+		}
+		return
+	}
 
+	systemMessage := "You are a helpful, funny, and sarcastic Slack bot called BotBot that can answer questions and add links to Notion. When adding links to Notion, users should provide the URL and optional labels.Users should call bot via the -h flag"
+
+	history := conversationHistory[userID]
+	if len(history) == 0 {
+		history = []string{fmt.Sprintf("System: %s", systemMessage)}
+	}
+	
 	response, err := CallOllama(text, history)
 	if err != nil {
 		response = "Sorry, I couldn't process that."
 	} else {
-		conversationHistory[userID] = append(conversationHistory[userID], fmt.Sprintf("User: %s", text), fmt.Sprintf("Bot: %s", response))
+		if len(conversationHistory[userID]) == 0 {
+			conversationHistory[userID] = append([]string{fmt.Sprintf("System: %s", systemMessage)}, fmt.Sprintf("User: %s", text), fmt.Sprintf("Bot: %s", response))
+		} else {
+			conversationHistory[userID] = append(conversationHistory[userID], fmt.Sprintf("User: %s", text), fmt.Sprintf("Bot: %s", response))
+		}
 	}
 
 	_, _, err = client.PostMessage(channelID, slack.MsgOptionText(response, false))
@@ -112,11 +141,5 @@ func HandleAppMentionEvent(client *slack.Client, event *slackevents.AppMentionEv
 		log.Printf("Failed to post message: %v", err)
 	}
 
-	err = client.RemoveReaction(thinkingEmoji, slack.ItemRef{
-		Channel:   channelID,
-		Timestamp: messageTimestamp,
-	})
-	if err != nil {
-		log.Printf("Failed to remove reaction: %v", err)
-	}
+	
 }

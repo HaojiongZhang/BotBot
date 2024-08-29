@@ -24,9 +24,10 @@ func main() {
 		log.Fatalf("Error loading .env file")
 	}
 
-	// Initialize Notion client (assuming this is still needed)
 	util.InitNotionClient()
 
+	util.InitLLM()
+	
 	// Initialize Slack client and Socket Mode
 	if err := util.InitializeSlackClient(); err != nil {
 		log.Fatalf("Failed to initialize Slack client: %v", err)
