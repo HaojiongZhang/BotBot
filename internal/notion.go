@@ -26,7 +26,7 @@ func InitNotionClient() {
 	notionClient = notionapi.NewClient(token)
 
 	// Check if the database with the specified title exists under the parent page
-	dbTitle := "Your Database Title" 
+	dbTitle := os.Getenv("NOTION_DB_TITLE")
 	var err error
 	dbID, err = queryDatabase(dbTitle, parentPageID)
 	if err != nil {

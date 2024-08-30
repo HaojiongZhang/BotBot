@@ -109,8 +109,9 @@ func HandleAppMentionEvent(client *slack.Client, event *slackevents.AppMentionEv
 		return
 	}
 
-	if strings.ToLower(text) == "-h" || strings.ToLower(text) == "-help" {
-		helpMessage := "To add a link to notion follow the format: `@BotBot YOUR-URL-LINK-HERE LABEL1 LABEL2 ...`"
+	if text == "-h" || text == "-help" {
+		notionDBURL := os.Getenv("NOTION_DB_LINK")
+		helpMessage := fmt.Sprintf("To add a link to notion follow the format:\n`@BotBot YOUR-URL-LINK-HERE LABEL1 LABEL2 ...`\n\nNotion Database URL:\n%s", notionDBURL)
 		_, _, err := client.PostMessage(channelID, slack.MsgOptionText(helpMessage, false))
 		if err != nil {
 			log.Printf("Failed to post message: %v", err)

@@ -4,9 +4,7 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"strings"
 	"sync"
@@ -61,13 +59,13 @@ func CallOllama(input string, history []string) (string, error) {
 			userLabels := strings.Join(urlParts[1:], ", ")
 		
 
-			summary:= ""
-			err = AddEntryToDatabase(url, time.Now().Format("2006-01-02"), userLabels, url, summary)
+			title, summary, _ := processURL(llm, urlAndLabels)
+			err = AddEntryToDatabase(title, time.Now().Format("2006-01-02"), userLabels, url, summary)
 			if err != nil {
 				log.Printf("Failed to add entry to Notion: %v", err)
 			}
-			// return processURL(llm, urlAndLabels)
-			return "I have added url and label to Notion!", nil
+			return fmt.Sprintf(`I have added the link and label to Notion! 
+			Here's a short summary of what I could find: %s`, summary), nil
 		}
 	}
 
@@ -95,93 +93,49 @@ func classifyInput(llm llms.LLM, prompt string) (string, error) {
 	return strings.TrimSpace(classification), nil
 }
 
-func processURL(llm llms.LLM, urlAndLabels string) (string, error) {
+func processURL(llm llms.LLM, urlAndLabels string) (string, string, error) {
 	parts := strings.Fields(urlAndLabels)
 	url := parts[0]
 	userLabels := parts[1:]
-	if len(userLabels) > 0 && userLabels[0] != "label1"{
-		userLabels = []string{}
-	}
+	
 
-	content, err := WebScraper(url)
+	title, content, err := WebScraper(url)
 	if err != nil {
 		log.Printf("Failed to scrape URL: %v", err)
-		return "", err
+		return "","", err
 	}
 	PrintDebug("User provided labels: " + strings.Join(userLabels," "))
 	var prompt string
-	if len(userLabels) > 0 {
-		if len(userLabels) > MaxLabels {
-			userLabels = userLabels[:MaxLabels]
-		}
-		prompt = fmt.Sprintf(`Given the following website content, please provide:
-1. A short summary (max 3 sentences)
-
-
-Labels: %s
+	
+	prompt = fmt.Sprintf(`Given the following website content, 
 Content: %s
-
-Format your response as follows and do not include any additional text beyond the specified fields or add any markdown support:
-Summary: [Your summary here]`, strings.Join(userLabels, ", "), content)
-	} else {
-		prompt = fmt.Sprintf(`Given the following website content, please provide:
-1. A short summary (max 3 sentences)
-2. Up to %d labels for this content (prioritize using existing labels if it makes sense from this list: %s. If necessary, suggest new meaningful labels)
-
-Content: %s
-
-Format your response as follows and do not include any additional text beyond the specified fields or add any markdown support:
-Summary: [Your summary here]
-Labels: [comma-separated list of labels]`, MaxLabels, strings.Join(GlobalLabels.ToSlice(), ", "), content)
-	}
+Please provide a summary of the content in under 3 sentences. Format your response as follows and do not include any additional text beyond the specified fields or add any markdown support:
+Summary: [Your summary here]`, content)
+	
 
 	ctx := context.Background()
 	completion, err := llms.GenerateFromSinglePrompt(ctx, llm, prompt)
 	if err != nil {
 		log.Printf("Failed to generate response for URL analysis: %v", err)
-		return "", err
+		return "","", err
 	}
 
-	if len(userLabels) == 0 {
-		suggestedLabels := extractLabels(completion)
-		updateGlobalLabels(suggestedLabels)
-	}
-	PrintDebug("Final Content Here: " + completion)
-	return completion, nil
+	summary := extractSummary(completion)
+	
+	PrintDebug("Final summary Here: " + summary)
+	return title,summary, nil
 }
 
-func extractLabels(completion string) []string {
-	labelSection := strings.Split(completion, "Labels: ")
-	if len(labelSection) > 1 {
-		labels := strings.Split(labelSection[1], "\n")[0]
-		return strings.Split(labels, ", ")
+func extractSummary(completion string) string {
+	summaryPrefix := "Summary: "
+	if strings.HasPrefix(completion, summaryPrefix) {
+		summary := strings.TrimPrefix(completion, summaryPrefix)
+		return strings.TrimSpace(summary)
 	}
-	return []string{}
+	return ""
 }
 
-// WebScraper function (to be implemented)
-func WebScraper(url string) (string, error) {
 
-	fullURL := "https://r.jina.ai/" + url
-
-	response, err := http.Get(fullURL)
-	if err != nil {
-		return "", fmt.Errorf("failed to make request: %w", err)
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", response.StatusCode)
-	}
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response body: %w", err)
-	}
-
-	PrintDebug("jina response: " + string(body))
-	return string(body), nil
-}
 
 func updateGlobalLabels(newLabels []string) {
 	labelsMutex.Lock()

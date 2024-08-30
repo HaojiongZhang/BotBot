@@ -1,5 +1,5 @@
 # Default target
-.PHONY: run add commit ssh-add push
+.PHONY: run add commit ssh-add push test
 
 # Run the Go application
 run:
@@ -21,3 +21,7 @@ ssh-add:
 # Push changes to origin main
 push: add commit ssh-add
 	git push origin main
+
+# Run the test/scrape.go file
+test:
+	go run test/scrape.go
